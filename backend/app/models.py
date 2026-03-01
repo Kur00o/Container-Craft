@@ -172,5 +172,23 @@ class ComposeConfig(BaseModel):
         }
 
 class ValidationError(BaseModel):
+    """Model for validation errors"""
+    service: str = Field(..., description="Service name with error")
+    field: str = Field(..., description="Field that has error")
+    message: str = Field(..., description="Error message")
+    severity: str = Field(
+        default="error",
+        description="Severity: 'error' or 'warning'"
+    )
 
-class ValidationResponse(BaseMOdel):
+class ValidationResponse(BaseModel):
+    """Response model for validation endpoint"""
+    valid: bool = Field(..., description="Whether configuration is valid")
+    errors: List[ValidationError] = Field(
+        default_factory=list,
+        description="List of validation errors"
+    )
+    warnings: List[ValidationError] = Field(
+        default_factory=list,
+        description="List of warnings"
+    )
