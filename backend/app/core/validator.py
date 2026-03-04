@@ -86,3 +86,37 @@ def check_image_names(services: List[ServiceConfig], errors: List[ValidationErro
                 severity="error"
             ))
 
+def check_network_consistency(services: List[ServiceConfig], warnings: List[ValidationError]) -> None:
+    """
+    Check that services which depend on each other share at least one network.
+    If they don't share a network, they likely can't communicate.
+    
+    argument:: services: List of ServiceConfig
+    argument:: warnings: List to append ValidationError (warning severity) objects into
+    """
+    # Build a lookup map: service_name -> ServiceConfig
+    service_map = {s.name: s for s in services}
+
+    for service in services:
+        for dep_name in service.depends_on:
+            dep_service = service_map.get(dep_name)
+            if not dep_service:
+                # Missing dependency — already caught by Pydantic validator in models.py
+                continue
+
+            # Only warn if BOTH services have explicit networks defined
+            # If neither specifies networks, Docker puts them on the default network
+            if service.networks and dep_service.networks:
+                shared = set(service.networks) & set(dep_service.networks)
+                if not shared:
+                    warnings.append(ValidationError(
+                        service=service.name,
+                        field="networks",
+                        message=(
+                            f"'{service.name}' depends on '{dep_name}' but they share no "
+                            f"common networks. '{service.name}' is on {service.networks}, "
+                            f"'{dep_name}' is on {dep_service.networks}. "
+                            f"They may not be able to communicate."
+                        ),
+                        severity="warning"
+                    ))
