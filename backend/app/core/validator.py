@@ -18,6 +18,8 @@ def validate_compose_config(services: List[ServiceConfig]) -> ValidationResponse
     check_network_consistency(services, warnings)
     check_environment_variables(services, warnings)
     check_healthcheck(services, errors)
+    check_command(services, warnings)
+    check_build_config(services, errors)
 
     return ValidationResponse(
         valid=len(errors) == 0,
@@ -217,5 +219,46 @@ def check_healthcheck(services: List[ServiceConfig], errors: List[ValidationErro
                 service=service.name,
                 field="healthcheck.test",
                 message="healthcheck.test must not be empty.",
+                severity="error"
+            ))
+
+def check_command(services: List[ServiceConfig], warnings: List[ValidationError]) -> None:
+    """
+    Warn if command is an empty string (None is fine, empty string is likely a mistake).
+    """
+    for service in services:
+        if service.command is not None and not service.command.strip():
+            warnings.append(ValidationError(
+                service=service.name,
+                field="command",
+                message=(
+                    "Command is set but empty. Either provide a valid command "
+                    "or remove it to use the image default."
+                ),
+                severity="warning"
+            ))
+
+def check_build_config(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate build context if defined on a service.
+    Checks: context is not empty, dockerfile name is not empty.
+    """
+    for service in services:
+        if not service.build:
+            continue
+
+        if not service.build.context.strip():
+            errors.append(ValidationError(
+                service=service.name,
+                field="build.context",
+                message="Build context path cannot be empty.",
+                severity="error"
+            ))
+
+        if not service.build.dockerfile.strip():
+            errors.append(ValidationError(
+                service=service.name,
+                field="build.dockerfile",
+                message="Dockerfile name cannot be empty. Defaults to 'Dockerfile' if not specified.",
                 severity="error"
             ))
