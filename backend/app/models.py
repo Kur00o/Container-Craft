@@ -99,6 +99,26 @@ class ServiceConfig(BaseModel):
         description = "Build context config (custom Dockerfile). If set, used alongside or instead of image."
     )
 
+    network_mode: Optional[str] = Field(
+        None,
+        description=(
+            "Docker network mode. Valid values: 'bridge', 'host', 'none', 'container:<name>'. "
+            "Mutually exclusive with 'networks' and 'ports' when set to 'host'."
+        ),
+        example="host"
+    )
+
+    cpu_limit: Optional[float] = Field(
+        None,
+        description="Max CPU cores the container can use (e.g., 0.5 = half a core, 2.0 = 2 cores).",
+        example=0.5
+    )
+
+    memory_limit: Optional[str] = Field(
+        None,
+        description="Max memory the container can use (e.g., '512M', '1G', '256m').",
+        example="512M"
+    )
     # Validators
     @field_validator('ports')
     @classmethod
@@ -176,7 +196,7 @@ class ComposeConfig(BaseModel):
     services: List[ServiceConfig] = Field(
         ...,
         description="List of services in the compose file",
-        min_items=1
+        min_length=1
     )
     
     @field_validator('services')

@@ -20,6 +20,9 @@ def validate_compose_config(services: List[ServiceConfig]) -> ValidationResponse
     check_healthcheck(services, errors)
     check_command(services, warnings)
     check_build_config(services, errors)
+    check_volume_paths(services, errors)        
+    check_network_mode(services, errors)        
+    check_resource_limits(services, errors) 
 
     return ValidationResponse(
         valid=len(errors) == 0,
@@ -262,3 +265,166 @@ def check_build_config(services: List[ServiceConfig], errors: List[ValidationErr
                 message="Dockerfile name cannot be empty. Defaults to 'Dockerfile' if not specified.",
                 severity="error"
             ))
+
+def check_volume_paths(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate volume mapping format and paths.
+    Checks:
+    1. Must contain ':' separator
+    2. Container path (right side) must be absolute (start with '/')
+    3. If a mode is specified (3rd part), must be 'ro' or 'rw'
+
+    argument:: services: List of ServiceConfig
+    argument:: errors: List to append ValidationError objects into
+    """
+    valid_modes = {"ro", "rw"}
+
+    for service in services:
+        for volume in service.volumes:
+            parts = volume.split(":")
+
+            # Check 1: must have at least source:target
+            if len(parts) < 2:
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="volumes",
+                    message=(
+                        f"Volume '{volume}' is missing a ':' separator. "
+                        f"Expected format: 'source:target' or 'source:target:mode'."
+                    ),
+                    severity="error"
+                ))
+                continue
+
+            container_path = parts[1]
+
+            # Check 2: container path must be absolute
+            if not container_path.startswith("/"):
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="volumes",
+                    message=(
+                        f"Volume '{volume}' has an invalid container path '{container_path}'. "
+                        f"Container path must be absolute (start with '/')."
+                    ),
+                    severity="error"
+                ))
+
+            # Check 3: if mode is specified, must be 'ro' or 'rw'
+            if len(parts) == 3:
+                mode = parts[2]
+                if mode not in valid_modes:
+                    errors.append(ValidationError(
+                        service=service.name,
+                        field="volumes",
+                        message=(
+                            f"Volume '{volume}' has an invalid mode '{mode}'. "
+                            f"Allowed modes are 'ro' (read-only) or 'rw' (read-write)."
+                        ),
+                        severity="error"
+                    ))
+
+def check_network_mode(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate network_mode if set on a service.
+    Checks:
+    1. Must be one of: bridge, host, none, container:<n>
+    2. 'host' mode is incompatible with port mappings
+    3. network_mode is mutually exclusive with networks list
+
+    argument:: services: List of ServiceConfig
+    argument:: errors: List to append ValidationError objects into
+    """
+    simple_valid_modes = {"bridge", "host", "none"}
+
+    for service in services:
+        if not service.network_mode:
+            continue
+
+        mode = service.network_mode.strip()
+
+        # Check 1: valid mode value
+        is_container_mode = mode.startswith("container:")
+        if mode not in simple_valid_modes and not is_container_mode:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'{mode}' is not a valid network mode. "
+                    f"Valid values are: 'bridge', 'host', 'none', 'container:<n>'."
+                ),
+                severity="error"
+            ))
+
+        # Check 2: host mode + ports is a conflict
+        if mode == "host" and service.ports:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'network_mode: host' shares the host's network stack — "
+                    f"port mappings are ignored. Remove 'ports' or change network_mode."
+                ),
+                severity="error"
+            ))
+
+        # Check 3: network_mode and networks are mutually exclusive
+        if service.networks:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'network_mode: {mode}' cannot be used together with 'networks'. "
+                    f"Remove one or the other."
+                ),
+                severity="error"
+            ))
+
+def check_resource_limits(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate cpu_limit and memory_limit if set on a service.
+    Checks:
+    1. cpu_limit must be a float between 0.0 and 64.0
+    2. memory_limit must match Docker memory format: 512M, 1G, 256m, 1.5g, etc.
+
+    argument:: services: List of ServiceConfig
+    argument:: errors: List to append ValidationError objects into
+    """
+    memory_pattern = re.compile(r'^\d+(\.\d+)?[bBkKmMgG]$')
+
+    for service in services:
+
+        # CPU limit check
+        if service.cpu_limit is not None:
+            if service.cpu_limit <= 0:
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="cpu_limit",
+                    message=(
+                        f"cpu_limit must be greater than 0. Got '{service.cpu_limit}'."
+                    ),
+                    severity="error"
+                ))
+            elif service.cpu_limit > 64.0:
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="cpu_limit",
+                    message=(
+                        f"cpu_limit of '{service.cpu_limit}' seems unreasonably high. "
+                        f"Maximum allowed is 64.0 cores."
+                    ),
+                    severity="error"
+                ))
+
+        # Memory limit check
+        if service.memory_limit is not None:
+            if not memory_pattern.match(service.memory_limit):
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="memory_limit",
+                    message=(
+                        f"'{service.memory_limit}' is not a valid memory limit. "
+                        f"Use format like '512M', '1G', '256m', '1.5g'."
+                    ),
+                    severity="error"
+                ))
