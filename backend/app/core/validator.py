@@ -379,3 +379,52 @@ def check_network_mode(services: List[ServiceConfig], errors: List[ValidationErr
                 ),
                 severity="error"
             ))
+
+def check_resource_limits(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate cpu_limit and memory_limit if set on a service.
+    Checks:
+    1. cpu_limit must be a float between 0.0 and 64.0
+    2. memory_limit must match Docker memory format: 512M, 1G, 256m, 1.5g, etc.
+
+    argument:: services: List of ServiceConfig
+    argument:: errors: List to append ValidationError objects into
+    """
+    memory_pattern = re.compile(r'^\d+(\.\d+)?[bBkKmMgG]$')
+
+    for service in services:
+
+        # CPU limit check
+        if service.cpu_limit is not None:
+            if service.cpu_limit <= 0:
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="cpu_limit",
+                    message=(
+                        f"cpu_limit must be greater than 0. Got '{service.cpu_limit}'."
+                    ),
+                    severity="error"
+                ))
+            elif service.cpu_limit > 64.0:
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="cpu_limit",
+                    message=(
+                        f"cpu_limit of '{service.cpu_limit}' seems unreasonably high. "
+                        f"Maximum allowed is 64.0 cores."
+                    ),
+                    severity="error"
+                ))
+
+        # Memory limit check
+        if service.memory_limit is not None:
+            if not memory_pattern.match(service.memory_limit):
+                errors.append(ValidationError(
+                    service=service.name,
+                    field="memory_limit",
+                    message=(
+                        f"'{service.memory_limit}' is not a valid memory limit. "
+                        f"Use format like '512M', '1G', '256m', '1.5g'."
+                    ),
+                    severity="error"
+                ))
