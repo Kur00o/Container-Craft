@@ -323,3 +323,59 @@ def check_volume_paths(services: List[ServiceConfig], errors: List[ValidationErr
                         ),
                         severity="error"
                     ))
+
+def check_network_mode(services: List[ServiceConfig], errors: List[ValidationError]) -> None:
+    """
+    Validate network_mode if set on a service.
+    Checks:
+    1. Must be one of: bridge, host, none, container:<n>
+    2. 'host' mode is incompatible with port mappings
+    3. network_mode is mutually exclusive with networks list
+
+    argument:: services: List of ServiceConfig
+    argument:: errors: List to append ValidationError objects into
+    """
+    simple_valid_modes = {"bridge", "host", "none"}
+
+    for service in services:
+        if not service.network_mode:
+            continue
+
+        mode = service.network_mode.strip()
+
+        # Check 1: valid mode value
+        is_container_mode = mode.startswith("container:")
+        if mode not in simple_valid_modes and not is_container_mode:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'{mode}' is not a valid network mode. "
+                    f"Valid values are: 'bridge', 'host', 'none', 'container:<n>'."
+                ),
+                severity="error"
+            ))
+
+        # Check 2: host mode + ports is a conflict
+        if mode == "host" and service.ports:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'network_mode: host' shares the host's network stack — "
+                    f"port mappings are ignored. Remove 'ports' or change network_mode."
+                ),
+                severity="error"
+            ))
+
+        # Check 3: network_mode and networks are mutually exclusive
+        if service.networks:
+            errors.append(ValidationError(
+                service=service.name,
+                field="network_mode",
+                message=(
+                    f"'network_mode: {mode}' cannot be used together with 'networks'. "
+                    f"Remove one or the other."
+                ),
+                severity="error"
+            ))
