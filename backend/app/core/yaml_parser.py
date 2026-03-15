@@ -64,5 +64,25 @@ def parse_compose_yaml(yaml_string: str) -> Tuple[List[ServiceConfig], List[str]
                 f"Network '{net_name}' is marked as external. "
                 f"ContainerCraft will treat it as a regular named network."
             )
-
+    
+    services: List[ServiceConfig] = []
+ 
+    for service_name, service_data in services_dict.items():
+        if not isinstance(service_data, dict):
+            warnings.append(f"Service '{service_name}' has no configuration — skipped.")
+            continue
+ 
+        # Warn about unsupported service-level keys
+        unsupported = set(service_data.keys()) - _SUPPORTED_SERVICE_KEYS
+        if unsupported:
+            warnings.append(
+                f"Service '{service_name}': unsupported keys {unsupported} were ignored. "
+                f"(ContainerCraft does not yet support these features.)"
+            )
+ 
+        service_config = _dict_to_service_config(service_name, service_data, warnings)
+        if service_config:
+            services.append(service_config)
+ 
+    return services, warnings
     
