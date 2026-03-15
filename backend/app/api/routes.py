@@ -13,7 +13,6 @@ from app.core.yaml_generator import YAMLGenerator
 router = APIRouter()
 generator = YAMLGenerator()
 
-
 @router.post(
     "/compose/generate",
     response_class=PlainTextResponse,
@@ -63,6 +62,7 @@ def validate_compose(compose_config: ComposeConfig) -> ValidationResponse:
                 errors.append(
                     ValidationError(
                         service=service.name,
+                        type="missing_dependency",
                         field="depends_on",
                         message=f"Depends on '{dep}' which is not defined in this compose config.",
                         severity="error",
@@ -72,6 +72,7 @@ def validate_compose(compose_config: ComposeConfig) -> ValidationResponse:
                 errors.append(
                     ValidationError(
                         service=service.name,
+                        type="missing_dependency",
                         field="depends_on",
                         message=f"Service '{service.name}' cannot depend on itself.",
                         severity="error",
@@ -83,6 +84,7 @@ def validate_compose(compose_config: ComposeConfig) -> ValidationResponse:
             warnings.append(
                 ValidationError(
                     service=service.name,
+                    type="network_inconsistency",
                     field="networks",
                     message=(
                         f"Service '{service.name}' has depends_on but no shared network "
@@ -100,6 +102,7 @@ def validate_compose(compose_config: ComposeConfig) -> ValidationResponse:
         errors.append(
             ValidationError(
                 service=cycle[0],
+                type="circular_dependency",
                 field="depends_on",
                 message=f"Circular dependency detected: {cycle_str}",
                 severity="error",

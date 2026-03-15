@@ -44,6 +44,7 @@ def check_port_conflicts(services: List[ServiceConfig], errors: List[ValidationE
             if host_port in seen_ports:
                 errors.append(ValidationError(
                     service=service.name,
+                    type = "port_confict",
                     field="ports",
                     message=(
                         f"Port {host_port} is already used by service "
@@ -73,6 +74,7 @@ def check_image_names(services: List[ServiceConfig], errors: List[ValidationErro
         if not image:
             errors.append(ValidationError(
                 service=service.name,
+                type="invalid_image",
                 field="image",
                 message="Image name cannot be empty.",
                 severity="error"
@@ -82,6 +84,7 @@ def check_image_names(services: List[ServiceConfig], errors: List[ValidationErro
         if not image_pattern.match(image):
             errors.append(ValidationError(
                 service=service.name,
+                type="invalid_image",
                 field="image",
                 message=(
                     f"'{image}' is not a valid Docker image name. "
@@ -115,6 +118,7 @@ def check_network_consistency(services: List[ServiceConfig], warnings: List[Vali
                 if not shared:
                     warnings.append(ValidationError(
                         service=service.name,
+                        type="network_inconsistency",
                         field="networks",
                         message=(
                             f"'{service.name}' depends on '{dep_name}' but they share no "
@@ -147,6 +151,7 @@ def check_environment_variables(services: List[ServiceConfig], warnings: List[Va
             if not valid_key_pattern.match(key):
                 warnings.append(ValidationError(
                     service=service.name,
+                    type = "invalid_environment",
                     field="environment",
                     message=(
                         f"Environment variable '{key}' has an invalid name. "
@@ -159,6 +164,7 @@ def check_environment_variables(services: List[ServiceConfig], warnings: List[Va
             if value == "" or value is None:
                 warnings.append(ValidationError(
                     service=service.name,
+                    type = "invalid_environment",
                     field="environment",
                     message=(
                         f"Environment variable '{key}' has an empty value. "
@@ -172,6 +178,7 @@ def check_environment_variables(services: List[ServiceConfig], warnings: List[Va
             if any(keyword in key_upper for keyword in SENSITIVE_KEYWORDS) and value:
                 warnings.append(ValidationError(
                     service=service.name,
+                    type = "invalid_environment",
                     field="environment",
                     message=(
                         f"'{key}' appears to contain sensitive data in plaintext. "
@@ -201,6 +208,7 @@ def check_healthcheck(services: List[ServiceConfig], errors: List[ValidationErro
             if not duration_pattern.match(value):
                 errors.append(ValidationError(
                     service=service.name,
+                    type="invalid_healthcheck",
                     field=f"healthcheck.{field_name}",
                     message=f"'{value}' is not a valid duration. Use format like '30s', '1m', '2h'.",
                     severity="error"
@@ -209,6 +217,7 @@ def check_healthcheck(services: List[ServiceConfig], errors: List[ValidationErro
         if hc.retries < 1:
             errors.append(ValidationError(
                 service=service.name,
+                type="invalid_healthcheck",
                 field="healthcheck.retries",
                 message="retries must be at least 1.",
                 severity="error"
@@ -217,6 +226,7 @@ def check_healthcheck(services: List[ServiceConfig], errors: List[ValidationErro
         if not hc.test:
             errors.append(ValidationError(
                 service=service.name,
+                type="invalid_healthcheck",
                 field="healthcheck.test",
                 message="healthcheck.test must not be empty.",
                 severity="error"
@@ -230,6 +240,8 @@ def check_command(services: List[ServiceConfig], warnings: List[ValidationError]
         if service.command is not None and not service.command.strip():
             warnings.append(ValidationError(
                 service=service.name,
+                type="invalid_command",
+
                 field="command",
                 message=(
                     "Command is set but empty. Either provide a valid command "
@@ -250,6 +262,7 @@ def check_build_config(services: List[ServiceConfig], errors: List[ValidationErr
         if not service.build.context.strip():
             errors.append(ValidationError(
                 service=service.name,
+                type = "invalid_build",
                 field="build.context",
                 message="Build context path cannot be empty.",
                 severity="error"
