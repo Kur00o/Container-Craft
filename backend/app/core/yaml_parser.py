@@ -44,5 +44,25 @@ def parse_compose_yaml(yaml_string: str) -> Tuple[List[ServiceConfig], List[str]
             warnings.append(
                 f"Top-level key '{key}' is not supported by ContainerCraft and was ignored."
             )
+    
+    services_dict: Dict[str, Any] = compose_dict.get("services")
+    if not services_dict or not isinstance(services_dict, dict):
+        raise YAMLParseError("No valid 'services' block found in the YAML.")
+ 
+    networks_dict: Dict[str, Any] = compose_dict.get("networks", {}) or {}
+    for net_name, net_config in networks_dict.items():
+        if not isinstance(net_config, dict):
+            continue
+        found_complex = _COMPLEX_NETWORK_KEYS & set(net_config.keys())
+        if found_complex:
+            warnings.append(
+                f"Network '{net_name}' uses advanced config {found_complex} "
+                f"which ContainerCraft cannot represent — simplified to a basic bridge network."
+            )
+        if net_config.get("external"):
+            warnings.append(
+                f"Network '{net_name}' is marked as external. "
+                f"ContainerCraft will treat it as a regular named network."
+            )
 
     
