@@ -1,18 +1,32 @@
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from pydantic import list
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+# from pydantic import list
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 app = FastAPI()
 
-# we are yet to add the origin urls, on hold as of now.
-origins = []
+# Configure CORS to allow frontend and development servers
+origins = [
+    "http://localhost:5173",      # Vite dev server
+    "http://localhost:8000",      # FastAPI dev server
+    "http://localhost:3000",      # Alternative frontend port
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:3000",
+]
+
+# Add any production origins from environment if needed
+if os.getenv("ALLOWED_ORIGINS"):
+    origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins = origins,
-    allow_credentials = True,
-    allow_methods = ["*"],
-    allow_headers = ["*"]
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
 @app.get("/api/health")
@@ -21,14 +35,14 @@ async def health_check():
 
 
 # creating an endpoint for templates from its repsctive folder.
-from templates.compose_templates import TEMPLATES
+from app.templates.compose_templates import TEMPLATES
 
 @app.get("/api/templates")
 async def get_templates():
     return TEMPLATES
 
-from core.yaml_generator import YAMLGenerator
-from models import ComposeConfig
+from app.core.yaml_generator import YAMLGenerator
+from app.models import ComposeConfig
 
 @app.post("/api/generate_yaml")
 async def generate_yaml(request: Request):
@@ -41,8 +55,8 @@ async def generate_yaml(request: Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-from core.validator import validate_compose_config
-from models import ValidationResponse
+from app.core.validator import validate_compose_config
+from app.models import ValidationResponse
 
 #endpoint for validating the compose configuration sent by the frontend, it will return a response with valid flag and list of errors if any.
 
@@ -64,8 +78,8 @@ async def get_stacks():
 
 # endpoints for saving and loading compose file 
 
-from models import ProjectSave, ValidationResponse as ProjectValidationResponse
-from core.validator import validate_compose_config
+from app.models import ProjectSave, ValidationResponse as ProjectValidationResponse
+from app.core.validator import validate_compose_config
 
 @app.post("/api/projects/export")
 async def export_project(project: ProjectSave):
@@ -111,7 +125,7 @@ async def validate_import(request: Request):
 
  # ----- Endpoints for docker deployments and error handling -----------
 
-from core.docker_manager import deploy_compose, get_project_status, DockerManagerError
+from app.core.docker_manager import deploy_compose, get_project_status, DockerManagerError
 from pydantic import BaseModel
 
 class DeployRequest(BaseModel):
@@ -156,3 +170,12 @@ async def project_status(project_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected status error: {str(e)}")
  
+
+# Serve static files from the frontend build
+frontend_build_path = os.path.join(os.path.dirname(__file__), "../../frontend/dist")
+if os.path.exists(frontend_build_path):
+    app.mount("/", StaticFiles(directory=frontend_build_path, html=True), name="frontend")
+else:
+    # Fallback for development when frontend build doesn't exist
+    print(f"Warning: Frontend build directory not found at {frontend_build_path}")
+    print("Frontend static files will not be served. Run 'npm run build' in the frontend directory.")

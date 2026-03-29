@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useDraggable } from '@dnd-kit/core';
-import { SERVICES } from '../services/api';
+import { SERVICES } from '../../services/api';
 
 const ServiceCard = ({ service }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({

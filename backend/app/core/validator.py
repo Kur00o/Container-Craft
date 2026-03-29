@@ -1,6 +1,6 @@
 import re
 from typing import List
-from models import ServiceConfig, ValidationError, ValidationResponse
+from app.models import ServiceConfig, ValidationError, ValidationResponse
 
 def validate_compose_config(services: List[ServiceConfig]) -> ValidationResponse:
     """

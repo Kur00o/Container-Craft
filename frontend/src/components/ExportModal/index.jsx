@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Copy, Download, CheckCircle, Rocket } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { generateYAMLLocally, generateYAML, validateCompose } from '../services/api';
+import { generateYAMLLocally, generateYAML, validateCompose } from '../../services/api';
 
 export default function ExportModal({ isOpen, onClose, nodes, edges }) {
   const [activeTab, setActiveTab] = useState('yaml');
