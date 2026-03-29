@@ -54,7 +54,27 @@ async def generate_yaml(request: Request):
         return Response(content=yaml_output, media_type="text/yaml")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
+@app.post("/api/yaml/generate")
+async def generate_yaml_alias(request: Request):
+    """Compatibility endpoint for frontend wrapper paths."""
+    try:
+        data = await request.json()
+        compose_config = ComposeConfig(**data)
+        yaml_generator = YAMLGenerator()
+        yaml_output = yaml_generator.generate_yaml(compose_config)
+        return Response(content=yaml_output, media_type="text/yaml")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/yaml/validate", response_model=ValidationResponse)
+async def validate_alias(request: Request):
+    """Compatibility endpoint for frontend wrapper paths."""
+    data = await request.json()
+    compose_config = ComposeConfig(**data)
+    result = validate_compose_config(compose_config.services)
+    return result
+
 from app.core.validator import validate_compose_config
 from app.models import ValidationResponse
 
@@ -146,6 +166,20 @@ async def deploy(request: DeployRequest):
         return result
     except DockerManagerError as e:
         # Distinguish daemon-not-running (503) from compose failures (400)
+        msg = str(e)
+        if "Could not connect" in msg or "command not found" in msg:
+            raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected deployment error: {str(e)}")
+
+@app.post("/api/deploy")
+async def deploy_alias(request: DeployRequest):
+    """Compatibility endpoint for frontend wrapper paths."""
+    try:
+        result = deploy_compose(request.yaml_content, request.project_name)
+        return result
+    except DockerManagerError as e:
         msg = str(e)
         if "Could not connect" in msg or "command not found" in msg:
             raise HTTPException(status_code=503, detail=msg)
