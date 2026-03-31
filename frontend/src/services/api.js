@@ -5,22 +5,24 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
-export const generateYAML = async (services) => {
+export const generateYAML = async (composeConfig) => {
   try {
-    const response = await api.post('/yaml/generate', { services });
+    // composeConfig should match backend ComposeConfig model (version + services list)
+    const response = await api.post('/generate_yaml', composeConfig);
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error('generateYAML error', error);
     throw error;
   }
 };
 
-export const validateCompose = async (yamlString) => {
+export const validateCompose = async (composeConfig) => {
   try {
-    const response = await api.post('/yaml/validate', { yaml: yamlString });
+    // composeConfig should match backend ComposeConfig model
+    const response = await api.post('/validate', composeConfig);
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error('validateCompose error', error);
     return { valid: false, errors: [error.message] };
   }
 };
