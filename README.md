@@ -41,7 +41,7 @@ ContainerCraft is a web-based visual editor for creating Docker Compose files. I
 
 ## 🎥 Demo
 
-**[Watch Demo Video](#)** *(Coming soon)*
+**[Watch Demo Video](https://youtu.be/NSRWm1DW1f4)**
 
 ---
 
