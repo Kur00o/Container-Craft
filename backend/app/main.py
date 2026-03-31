@@ -1,0 +1,215 @@
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+# from pydantic import list
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+app = FastAPI()
+
+# Configure CORS to allow frontend and development servers
+origins = [
+    "http://localhost:5173",      # Vite dev server
+    "http://localhost:8000",      # FastAPI dev server
+    "http://localhost:3000",      # Alternative frontend port
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:3000",
+]
+
+# Add any production origins from environment if needed
+if os.getenv("ALLOWED_ORIGINS"):
+    origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+@app.get("/api/health")
+async def health_check():
+    return {"status" : "Healthy"}
+
+
+# creating an endpoint for templates from its repsctive folder.
+from app.templates.compose_templates import TEMPLATES
+
+@app.get("/api/templates")
+async def get_templates():
+    return TEMPLATES
+
+from app.core.yaml_generator import YAMLGenerator
+from app.models import ComposeConfig
+
+@app.post("/api/generate_yaml")
+async def generate_yaml(request: Request):
+    try:
+        data = await request.json()
+        compose_config = ComposeConfig(**data)
+        yaml_generator = YAMLGenerator()
+        yaml_output = yaml_generator.generate_yaml(compose_config)
+        return Response(content=yaml_output, media_type="text/yaml")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/yaml/generate")
+async def generate_yaml_alias(request: Request):
+    """Compatibility endpoint for frontend wrapper paths."""
+    try:
+        data = await request.json()
+        compose_config = ComposeConfig(**data)
+        yaml_generator = YAMLGenerator()
+        yaml_output = yaml_generator.generate_yaml(compose_config)
+        return Response(content=yaml_output, media_type="text/yaml")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/yaml/validate", response_model=ValidationResponse)
+async def validate_alias(request: Request):
+    """Compatibility endpoint for frontend wrapper paths."""
+    data = await request.json()
+    compose_config = ComposeConfig(**data)
+    result = validate_compose_config(compose_config.services)
+    return result
+
+from app.core.validator import validate_compose_config
+from app.models import ValidationResponse
+
+#endpoint for validating the compose configuration sent by the frontend, it will return a response with valid flag and list of errors if any.
+
+
+@app.post("/api/validate", response_model=ValidationResponse)
+async def validate(request: Request):
+    data = await request.json()
+    compose_config = ComposeConfig(**data)
+    result = validate_compose_config(compose_config.services)
+    return result
+
+
+# get endpoint api/stacks to get the list from stack templates in compose_templates.py
+@app.get("/api/stacks")
+async def get_stacks():
+    return TEMPLATES["stacks"]
+
+
+
+# endpoints for saving and loading compose file 
+
+from app.models import ProjectSave, ValidationResponse as ProjectValidationResponse
+from app.core.validator import validate_compose_config
+
+@app.post("/api/projects/export")
+async def export_project(project: ProjectSave):
+    """
+    Export a project to the .containercraft JSON save format.
+    Accepts a ProjectSave body and returns the same structure as JSON,
+    ready to be written to a .containercraft file by the frontend.
+    """
+    return project.model_dump()
+ 
+ 
+@app.post("/api/projects/import")
+async def import_project(request: Request):
+    """
+    Import a project from a .containercraft JSON file.
+    Parses and validates the payload against the ProjectSave schema.
+    Returns the fully parsed project object so the frontend can restore canvas state.
+    """
+    try:
+        data = await request.json()
+        project = ProjectSave(**data)
+        return project.model_dump()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid project file: {str(e)}")
+ 
+ 
+@app.post("/api/projects/validate", response_model=ProjectValidationResponse)
+async def validate_import(request: Request):
+    """
+    Validate the services inside an imported project file without fully loading it.
+    Runs the same checks as /api/validate (port conflicts, image names, etc.)
+    so the frontend can surface errors before committing the import to canvas state.
+    """
+    try:
+        data = await request.json()
+        project = ProjectSave(**data)
+        result = validate_compose_config(project.services)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse project for validation: {str(e)}")
+ 
+
+
+ # ----- Endpoints for docker deployments and error handling -----------
+
+from app.core.docker_manager import deploy_compose, get_project_status, DockerManagerError
+from pydantic import BaseModel
+
+class DeployRequest(BaseModel):
+    yaml_content: str
+    project_name: str
+
+@app.post("/app/deploy")
+async def deploy(request: DeployRequest):
+    """
+    Deploy a docker-compose project via the Docker SDK.
+ 
+    Writes the provided YAML to a temp file, runs `docker compose up -d`,
+    and returns the outcome. Returns 503 if the Docker daemon is unreachable,
+    400 if compose itself fails (bad config, port conflict, etc.).
+    """
+    try:
+        result = deploy_compose(request.yaml_content, request.project_name)
+        return result
+    except DockerManagerError as e:
+        # Distinguish daemon-not-running (503) from compose failures (400)
+        msg = str(e)
+        if "Could not connect" in msg or "command not found" in msg:
+            raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected deployment error: {str(e)}")
+
+@app.post("/api/deploy")
+async def deploy_alias(request: DeployRequest):
+    """Compatibility endpoint for frontend wrapper paths."""
+    try:
+        result = deploy_compose(request.yaml_content, request.project_name)
+        return result
+    except DockerManagerError as e:
+        msg = str(e)
+        if "Could not connect" in msg or "command not found" in msg:
+            raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected deployment error: {str(e)}")
+ 
+@app.get("/app/status/{project_name}")
+async def project_status(project_name: str):
+    """
+    Return the live container status for a deployed compose project.
+ 
+    Queries Docker for all containers labelled with the given project name
+    and returns per-container state plus an overall health summary.
+    Returns 503 if the Docker daemon is unreachable.
+    """
+    try:
+        result = get_project_status(project_name)
+        return result
+    except DockerManagerError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected status error: {str(e)}")
+ 
+
+# Serve static files from the frontend build
+frontend_build_path = os.path.join(os.path.dirname(__file__), "../../frontend/dist")
+if os.path.exists(frontend_build_path):
+    app.mount("/", StaticFiles(directory=frontend_build_path, html=True), name="frontend")
+else:
+    # Fallback for development when frontend build doesn't exist
+    print(f"Warning: Frontend build directory not found at {frontend_build_path}")
+    print("Frontend static files will not be served. Run 'npm run build' in the frontend directory.")
